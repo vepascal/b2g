@@ -17,7 +17,7 @@
 #define REST_RET_LOW_BAT -1
 #define REST_RET_BLOCK_DISCHARGE -2
 #define REST_RET_DEVICE_ERROR -3
-#define REST_RET_POWER_TO_HIGH -4
+#define REST_RET_OUT_OF_BOUNDS -4
 
 float battery_soc;
 float battery_Vdc=30;
@@ -25,10 +25,11 @@ float charge=0;
 float charge_real=0;
 float batteryLowLimits[2]= {17,20};
 
+//CAN-BUS shield
 // the cs pin of the version after v1.1 is default to D9
 // v0.9b and v1.0 is default D10
 const int SPI_CS_PIN = 9;
-MCP_CAN CAN(SPI_CS_PIN);                                    // Set CS pin 10
+MCP_CAN CAN(SPI_CS_PIN);   // Set CS pin 9
 
 //Ethernet shield 195.176.65.221
 byte mac[] = { 0x90, 0xA2, 0xDA, 0x10, 0x0A, 0xA6 };
@@ -96,7 +97,7 @@ void setup() {
   // Canbus
   //---------------------------------------------------------//
 
-START_INIT:
+  START_INIT:
 
   if (CAN_OK == CAN.begin(CAN_125KBPS)) // init can bus : baudrate = 125k
   {
@@ -110,7 +111,11 @@ START_INIT:
     goto START_INIT;
   }
 
+  
+  //---------------------------------------------------------//
   // SET BATTERY LIMITS
+  //---------------------------------------------------------//
+
   write_xt1_set_input_current(10.0);
 }
 
@@ -130,12 +135,9 @@ void loop() {
     charge_real=0;
   }
   
-
-
   //---------------------------------------------------------//
-  // Ethernet
+  // Ethernet  listen for incoming clients
   //---------------------------------------------------------//
-  // listen for incoming clients
 
   EthernetClient client = server.available();
   if (client) {
@@ -162,8 +164,6 @@ void loop() {
     if (canId == 0x18FF000B)
     {
       battery_soc = (float)((0x0000ff00 & (buf[0] << 8)) | (0x000000ff & buf[1])) / 65535.0 * 100.0; // SOC percentual
-      // DEBUG print SOC
-      //mySerial.println("");
       //mySerial.print("battery_soc: ");
       //mySerial.print(battery_soc);
       //mySerial.print(" %");
@@ -197,6 +197,7 @@ int charge_battery(float current) {
 }
 
 int discharge_battery(float current) {
+  current = (current>9) ? 9 : current;
   mySerial.print("dis ");
   mySerial.print(current);
   mySerial.println(" A");
@@ -206,8 +207,7 @@ int discharge_battery(float current) {
   return 0;
 }
 
-int idle_battery()
-{
+int idle_battery(){
   mySerial.println("idle");
   write_xt1_disable_grid_injection();
   write_xt1_disable_charging();
@@ -219,9 +219,10 @@ int idle_battery()
 // http://195.176.65.221/batteryControl?params=0
 //--------------------------------------------------------------------//
 
-// Custom function accessible by the API
-int batteryControl(String command) {
+  //Custom function accessible by the API
+  int batteryControl(String command) {
   float current;
+  bool out_of_bounds = 0;
   // Get state from command
   charge = command.toFloat();
   mySerial.print("Control: ");
@@ -254,15 +255,12 @@ int batteryControl(String command) {
       //mySerial.print(charge);
       //mySerial.println(" Watts");
 
-      //--------------------------------------------------------------------->>>>>>>>>>leggere valore ac????
       current = (-1.0) * charge / 230.0;
       if (current > 9) {
-        return REST_RET_POWER_TO_HIGH;
+        out_of_bounds = 1;
       }
-      else {
         discharge_battery(current);
         charge_real = charge;
-      }
     };
 
 
@@ -279,16 +277,14 @@ int batteryControl(String command) {
     //mySerial.println(" Watts");
 
     current = charge / 230.0;
-    //--------------------------------------------------------------------->>>>>>>>>>leggere valore ac????
-    if (current > 9) {
-      return REST_RET_POWER_TO_HIGH;
+
+    if (current > (1700.0/230.0)) {
+      out_of_bounds=1;
     }
-    else {
       //mySerial.print(current);
       //mySerial.println(" A");
       charge_battery(current);
       charge_real = charge;
-    }
   }
   
   //--------------------------------------------------------------
@@ -304,7 +300,10 @@ int batteryControl(String command) {
     charge_real = charge;
 
   }
-  return REST_RET_OK;
+  if (out_of_bounds)
+    return REST_RET_OUT_OF_BOUNDS;
+  else
+    return REST_RET_OK;
 }
 
 
