@@ -1,4 +1,5 @@
-# b2g
+# Remote battery to grid control system 
+### RESTful embedded API
 
 
 ## Overview
