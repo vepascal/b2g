@@ -10,7 +10,7 @@ The system is connected to the network and is able to receive API commands.
 Sending the command
 
 `IPdress/battery?params= followed by the disired param`
-is possible o change the desired output or input power [W]  
+is possible to change the desired output or input power [W]  
 
 The schematic of the system is [here](https://github.com/vepascal/b2g/blob/master/docs/Scematico%20Arduino%20con%20connessioni.pdf)
  
